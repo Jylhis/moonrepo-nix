@@ -34,6 +34,9 @@ jobs:
       - name: Build plugin
         run: cargo build --target wasm32-wasip1 --release
 
+      - name: Run tests
+        run: cargo test
+
       - name: Upload WASM artifact
         uses: actions/upload-artifact@v4
         with:
