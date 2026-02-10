@@ -223,7 +223,7 @@ pub fn extend_task_command(
     Ok(Json(output))
 }
 
-fn detect_nix_env(config: &NixToolchainConfig, start_dir: &std::path::Path) -> NixEnv {
+fn detect_nix_env(config: &NixToolchainConfig, start_dir: &VirtualPath) -> NixEnv {
     if config.use_devenv
         && (start_dir.join("devenv.nix").exists() || start_dir.join("devenv.yaml").exists())
     {
