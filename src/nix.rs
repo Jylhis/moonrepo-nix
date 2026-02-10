@@ -29,8 +29,7 @@ fn detect_nix_env<P: AsRef<Path>>(project_root: P, config: &NixToolchainConfig) 
     }
 
     let env = if config.use_devenv
-        && (project_root.join("devenv.nix").exists()
-            || project_root.join("devenv.yaml").exists())
+        && (project_root.join("devenv.nix").exists() || project_root.join("devenv.yaml").exists())
     {
         NixEnv::Devenv
     } else if config.use_flake && project_root.join("flake.nix").exists() {
