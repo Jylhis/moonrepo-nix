@@ -878,10 +878,8 @@ name = "moon_toolchain_nix"
 version = "0.1.0"
 dependencies = [
  "extism-pdk",
- "moon_config",
  "moon_pdk",
  "moon_pdk_api",
- "rustc-hash",
  "schematic",
  "serde",
  "starbase_utils",
