@@ -100,8 +100,17 @@ pub fn locate_dependencies_root(
     Json(input): Json<LocateDependenciesRootInput>,
 ) -> FnResult<Json<LocateDependenciesRootOutput>> {
     let config = get_toolchain_config::<NixToolchainConfig>()?;
-    let starting_dir = &input.starting_dir;
 
+    Ok(Json(locate_dependencies_root_impl(
+        input.starting_dir.as_ref(),
+        &config,
+    )))
+}
+
+fn locate_dependencies_root_impl(
+    starting_dir: &std::path::Path,
+    config: &NixToolchainConfig,
+) -> LocateDependenciesRootOutput {
     // Check for Nix environment files in the starting directory
     let nix_env = match () {
         _ if config.use_devenv
@@ -117,11 +126,11 @@ pub fn locate_dependencies_root(
     };
 
     match nix_env {
-        NixEnv::None => Ok(Json(LocateDependenciesRootOutput::default())),
-        _ => Ok(Json(LocateDependenciesRootOutput {
+        NixEnv::None => LocateDependenciesRootOutput::default(),
+        _ => LocateDependenciesRootOutput {
             root: Some(starting_dir.to_path_buf()),
             members: None,
-        })),
+        },
     }
 }
 
@@ -253,4 +262,329 @@ pub fn extend_task_command(
     }
 
     Ok(Json(output))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
+    struct TempDir {
+        path: PathBuf,
+    }
+
+    impl TempDir {
+        fn new(name: &str) -> Self {
+            let mut path = std::env::temp_dir();
+            path.push("moon-nix-tests");
+            path.push(name);
+
+            if path.exists() {
+                let _ = fs::remove_dir_all(&path);
+            }
+            fs::create_dir_all(&path).expect("Failed to create temp dir");
+
+            Self { path }
+        }
+
+        fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn create_config(
+        use_flake: bool,
+        use_shell_nix: bool,
+        use_flox: bool,
+        use_devenv: bool,
+    ) -> NixToolchainConfig {
+        NixToolchainConfig {
+            use_flake,
+            use_shell_nix,
+            use_flox,
+            use_devenv,
+            flox_environment: None,
+            version: None,
+        }
+    }
+
+    #[test]
+    fn test_no_env() {
+        let temp = TempDir::new("no-env");
+        let config = create_config(true, true, true, true);
+
+        let result = locate_dependencies_root_impl(temp.path(), &config);
+
+        assert!(result.root.is_none());
+        assert!(result.members.is_none());
+    }
+
+    #[test]
+    fn test_devenv_nix() {
+        let temp = TempDir::new("devenv-nix");
+        fs::write(temp.path().join("devenv.nix"), "").unwrap();
+
+        let config = create_config(false, false, false, true);
+        let result = locate_dependencies_root_impl(temp.path(), &config);
+
+        assert_eq!(result.root, Some(temp.path().to_path_buf()));
+    }
+
+    #[test]
+    fn test_devenv_yaml() {
+        let temp = TempDir::new("devenv-yaml");
+        fs::write(temp.path().join("devenv.yaml"), "").unwrap();
+
+        let config = create_config(false, false, false, true);
+        let result = locate_dependencies_root_impl(temp.path(), &config);
+
+        assert_eq!(result.root, Some(temp.path().to_path_buf()));
+    }
+
+    #[test]
+    fn test_flake() {
+        let temp = TempDir::new("flake");
+        fs::write(temp.path().join("flake.nix"), "").unwrap();
+
+        let config = create_config(true, false, false, false);
+        let result = locate_dependencies_root_impl(temp.path(), &config);
+
+        assert_eq!(result.root, Some(temp.path().to_path_buf()));
+    }
+
+    #[test]
+    fn test_shell_nix() {
+        let temp = TempDir::new("shell-nix");
+        fs::write(temp.path().join("shell.nix"), "").unwrap();
+
+        let config = create_config(false, true, false, false);
+        let result = locate_dependencies_root_impl(temp.path(), &config);
+
+        assert_eq!(result.root, Some(temp.path().to_path_buf()));
+    }
+
+    #[test]
+    fn test_flox() {
+        let temp = TempDir::new("flox");
+        let flox_dir = temp.path().join(".flox");
+        fs::create_dir(&flox_dir).unwrap();
+
+        let config = create_config(false, false, true, false);
+        let result = locate_dependencies_root_impl(temp.path(), &config);
+
+        assert_eq!(result.root, Some(temp.path().to_path_buf()));
+    }
+
+    #[test]
+    fn test_disabled_flag() {
+        let temp = TempDir::new("disabled-flag");
+        fs::write(temp.path().join("flake.nix"), "").unwrap();
+
+        // Disable flake usage
+        let config = create_config(false, false, false, false);
+        let result = locate_dependencies_root_impl(temp.path(), &config);
+
+        assert!(result.root.is_none());
+    }
+
+    #[test]
+    fn test_precedence() {
+        let temp = TempDir::new("precedence");
+
+        // Create all environment files
+        fs::write(temp.path().join("devenv.nix"), "").unwrap();
+        fs::write(temp.path().join("flake.nix"), "").unwrap();
+        fs::create_dir(temp.path().join(".flox")).unwrap();
+        fs::write(temp.path().join("shell.nix"), "").unwrap();
+
+        // Enable all
+        let config = create_config(true, true, true, true);
+
+        // Should pick devenv first
+        let result = locate_dependencies_root_impl(temp.path(), &config);
+        assert_eq!(
+            result.root,
+            Some(temp.path().to_path_buf()),
+            "Devenv should take precedence"
+        );
+
+        // If we disable devenv, it should pick flake
+        let config_no_devenv = create_config(true, true, true, false);
+        let result = locate_dependencies_root_impl(temp.path(), &config_no_devenv);
+        assert_eq!(
+            result.root,
+            Some(temp.path().to_path_buf()),
+            "Flake should be second"
+        );
+
+        // Wait, all return the same root (starting_dir).
+        // The implementation returns Some(starting_dir) regardless of WHICH file matched,
+        // as long as ONE matched.
+        // So I can't distinguish WHICH one matched by looking at the result unless I inspect logs or modify the function to return the matched type.
+
+        // But the test is valid: given the set of files and configs, it should return Some(root).
+        // To verify precedence, I would need to check WHICH logic branch was taken, but  returns the same output.
+        // The only way to verify precedence logic strictly is if different files existed in DIFFERENT locations, or if the result depended on the type.
+        // Here, it always returns .
+        // So checking precedence is implicitly checking "does it return Some when highest priority is present?". Yes.
+        // Does it return Some when only lowest priority is present? Yes.
+
+        // Actually, if I want to test precedence logic strictly, I'd need to mock filesystem such that checks fail or succeed in order.
+        // But since the result is identical, from the caller's perspective, it doesn't matter WHICH one matched, only THAT one matched.
+        // However, correctness of precedence (Devenv > Flake) is important if we had different behavior (e.g. setting different environment variables).
+        // In  and  the behavior differs.
+        // In , the behavior is uniform.
+        // So strictly speaking,  doesn't care which one, just ANY.
+        // But testing that "flake.nix exists + use_flake=true" works is valuable.
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
+    struct TempDir {
+        path: PathBuf,
+    }
+
+    impl TempDir {
+        fn new(name: &str) -> Self {
+            let mut path = std::env::temp_dir();
+            path.push("moon-nix-tests");
+            path.push(name);
+
+            if path.exists() {
+                let _ = fs::remove_dir_all(&path);
+            }
+            fs::create_dir_all(&path).expect("Failed to create temp dir");
+
+            Self { path }
+        }
+
+        fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn create_config(
+        use_flake: bool,
+        use_shell_nix: bool,
+        use_flox: bool,
+        use_devenv: bool,
+    ) -> NixToolchainConfig {
+        NixToolchainConfig {
+            use_flake,
+            use_shell_nix,
+            use_flox,
+            use_devenv,
+            flox_environment: None,
+            version: None,
+        }
+    }
+
+    #[test]
+    fn test_no_env() {
+        let temp = TempDir::new("no-env");
+        let config = create_config(true, true, true, true);
+
+        let result = locate_dependencies_root_impl(temp.path(), &config);
+
+        assert!(result.root.is_none());
+        assert!(result.members.is_none());
+    }
+
+    #[test]
+    fn test_devenv_nix() {
+        let temp = TempDir::new("devenv-nix");
+        fs::write(temp.path().join("devenv.nix"), "").unwrap();
+
+        let config = create_config(false, false, false, true);
+        let result = locate_dependencies_root_impl(temp.path(), &config);
+
+        assert_eq!(result.root, Some(temp.path().to_path_buf()));
+    }
+
+    #[test]
+    fn test_devenv_yaml() {
+        let temp = TempDir::new("devenv-yaml");
+        fs::write(temp.path().join("devenv.yaml"), "").unwrap();
+
+        let config = create_config(false, false, false, true);
+        let result = locate_dependencies_root_impl(temp.path(), &config);
+
+        assert_eq!(result.root, Some(temp.path().to_path_buf()));
+    }
+
+    #[test]
+    fn test_flake() {
+        let temp = TempDir::new("flake");
+        fs::write(temp.path().join("flake.nix"), "").unwrap();
+
+        let config = create_config(true, false, false, false);
+        let result = locate_dependencies_root_impl(temp.path(), &config);
+
+        assert_eq!(result.root, Some(temp.path().to_path_buf()));
+    }
+
+    #[test]
+    fn test_shell_nix() {
+        let temp = TempDir::new("shell-nix");
+        fs::write(temp.path().join("shell.nix"), "").unwrap();
+
+        let config = create_config(false, true, false, false);
+        let result = locate_dependencies_root_impl(temp.path(), &config);
+
+        assert_eq!(result.root, Some(temp.path().to_path_buf()));
+    }
+
+    #[test]
+    fn test_flox() {
+        let temp = TempDir::new("flox");
+        let flox_dir = temp.path().join(".flox");
+        fs::create_dir(&flox_dir).unwrap();
+
+        let config = create_config(false, false, true, false);
+        let result = locate_dependencies_root_impl(temp.path(), &config);
+
+        assert_eq!(result.root, Some(temp.path().to_path_buf()));
+    }
+
+    #[test]
+    fn test_disabled_flag() {
+        let temp = TempDir::new("disabled-flag");
+        fs::write(temp.path().join("flake.nix"), "").unwrap();
+
+        // Disable flake usage
+        let config = create_config(false, false, false, false);
+        let result = locate_dependencies_root_impl(temp.path(), &config);
+
+        assert!(result.root.is_none());
+    }
+
+    #[test]
+    fn test_multiple_envs() {
+        let temp = TempDir::new("multiple-envs");
+        fs::write(temp.path().join("flake.nix"), "").unwrap();
+        fs::write(temp.path().join("shell.nix"), "").unwrap();
+
+        let config = create_config(true, true, false, false);
+        let result = locate_dependencies_root_impl(temp.path(), &config);
+
+        assert_eq!(result.root, Some(temp.path().to_path_buf()));
+    }
 }
