@@ -164,7 +164,9 @@ where
         }
         _ if config.use_flake && check_exists(&project_root.join("flake.nix")) => NixEnv::NixFlake,
         _ if config.use_flox && check_exists(&project_root.join(".flox")) => NixEnv::Flox,
-        _ if config.use_shell_nix && check_exists(&project_root.join("shell.nix")) => NixEnv::NixShell,
+        _ if config.use_shell_nix && check_exists(&project_root.join("shell.nix")) => {
+            NixEnv::NixShell
+        }
         _ => NixEnv::None,
     };
 
@@ -181,30 +183,22 @@ where
                 None
             }
         }
-        NixEnv::Devenv => {
-            Some(ExecCommand {
-                command: ExecCommandInput::new("devenv", ["shell", "pwd"])
-                    .cwd(project_root.clone()),
-                label: Some("Install devenv dependencies".into()),
-                ..Default::default()
-            })
-        }
-        NixEnv::Flox => {
-            Some(ExecCommand {
-                command: ExecCommandInput::new("flox", ["activate", "--", "pwd"])
-                    .cwd(project_root.clone()),
-                label: Some("Initialize Flox environment".into()),
-                ..Default::default()
-            })
-        }
-        NixEnv::NixShell => {
-            Some(ExecCommand {
-                command: ExecCommandInput::new("nix-shell", ["--run", "pwd"])
-                    .cwd(project_root.clone()),
-                label: Some("Run Nix shell".into()),
-                ..Default::default()
-            })
-        }
+        NixEnv::Devenv => Some(ExecCommand {
+            command: ExecCommandInput::new("devenv", ["shell", "pwd"]).cwd(project_root.clone()),
+            label: Some("Install devenv dependencies".into()),
+            ..Default::default()
+        }),
+        NixEnv::Flox => Some(ExecCommand {
+            command: ExecCommandInput::new("flox", ["activate", "--", "pwd"])
+                .cwd(project_root.clone()),
+            label: Some("Initialize Flox environment".into()),
+            ..Default::default()
+        }),
+        NixEnv::NixShell => Some(ExecCommand {
+            command: ExecCommandInput::new("nix-shell", ["--run", "pwd"]).cwd(project_root.clone()),
+            label: Some("Run Nix shell".into()),
+            ..Default::default()
+        }),
         NixEnv::None => None,
     }
 }
@@ -296,11 +290,9 @@ mod tests {
         let config = create_config(false, false, false, true);
         let root = VirtualPath::Real(PathBuf::from("/project"));
 
-        let command = get_nix_env_command(&config, &root, |p| {
-            match p {
-                VirtualPath::Real(path) => path.to_string_lossy().ends_with("devenv.nix"),
-                _ => false,
-            }
+        let command = get_nix_env_command(&config, &root, |p| match p {
+            VirtualPath::Real(path) => path.to_string_lossy().ends_with("devenv.nix"),
+            _ => false,
         });
 
         assert!(command.is_some());
@@ -314,11 +306,9 @@ mod tests {
         let config = create_config(false, false, false, true);
         let root = VirtualPath::Real(PathBuf::from("/project"));
 
-        let command = get_nix_env_command(&config, &root, |p| {
-            match p {
-                VirtualPath::Real(path) => path.to_string_lossy().ends_with("devenv.yaml"),
-                _ => false,
-            }
+        let command = get_nix_env_command(&config, &root, |p| match p {
+            VirtualPath::Real(path) => path.to_string_lossy().ends_with("devenv.yaml"),
+            _ => false,
         });
 
         assert!(command.is_some());
@@ -330,11 +320,9 @@ mod tests {
         let config = create_config(true, false, false, false);
         let root = VirtualPath::Real(PathBuf::from("/project"));
 
-        let command = get_nix_env_command(&config, &root, |p| {
-            match p {
-                VirtualPath::Real(path) => path.to_string_lossy().ends_with("flake.nix"),
-                _ => false,
-            }
+        let command = get_nix_env_command(&config, &root, |p| match p {
+            VirtualPath::Real(path) => path.to_string_lossy().ends_with("flake.nix"),
+            _ => false,
         });
 
         assert!(command.is_some());
@@ -348,14 +336,12 @@ mod tests {
         let config = create_config(true, false, false, false);
         let root = VirtualPath::Real(PathBuf::from("/project"));
 
-        let command = get_nix_env_command(&config, &root, |p| {
-            match p {
-                VirtualPath::Real(path) => {
-                    let s = path.to_string_lossy();
-                    s.ends_with("flake.nix") || s.ends_with("flake.lock")
-                },
-                _ => false,
+        let command = get_nix_env_command(&config, &root, |p| match p {
+            VirtualPath::Real(path) => {
+                let s = path.to_string_lossy();
+                s.ends_with("flake.nix") || s.ends_with("flake.lock")
             }
+            _ => false,
         });
 
         assert!(command.is_none());
@@ -366,11 +352,9 @@ mod tests {
         let config = create_config(false, false, true, false);
         let root = VirtualPath::Real(PathBuf::from("/project"));
 
-        let command = get_nix_env_command(&config, &root, |p| {
-            match p {
-                VirtualPath::Real(path) => path.to_string_lossy().ends_with(".flox"),
-                _ => false,
-            }
+        let command = get_nix_env_command(&config, &root, |p| match p {
+            VirtualPath::Real(path) => path.to_string_lossy().ends_with(".flox"),
+            _ => false,
         });
 
         assert!(command.is_some());
@@ -384,11 +368,9 @@ mod tests {
         let config = create_config(false, true, false, false);
         let root = VirtualPath::Real(PathBuf::from("/project"));
 
-        let command = get_nix_env_command(&config, &root, |p| {
-            match p {
-                VirtualPath::Real(path) => path.to_string_lossy().ends_with("shell.nix"),
-                _ => false,
-            }
+        let command = get_nix_env_command(&config, &root, |p| match p {
+            VirtualPath::Real(path) => path.to_string_lossy().ends_with("shell.nix"),
+            _ => false,
         });
 
         assert!(command.is_some());
@@ -402,14 +384,12 @@ mod tests {
         let config = create_config(true, false, false, true); // Both enabled
         let root = VirtualPath::Real(PathBuf::from("/project"));
 
-        let command = get_nix_env_command(&config, &root, |p| {
-            match p {
-                VirtualPath::Real(path) => {
-                    let s = path.to_string_lossy();
-                    s.ends_with("devenv.nix") || s.ends_with("flake.nix")
-                },
-                _ => false,
+        let command = get_nix_env_command(&config, &root, |p| match p {
+            VirtualPath::Real(path) => {
+                let s = path.to_string_lossy();
+                s.ends_with("devenv.nix") || s.ends_with("flake.nix")
             }
+            _ => false,
         });
 
         assert!(command.is_some());
@@ -422,14 +402,12 @@ mod tests {
         let root = VirtualPath::Real(PathBuf::from("/project"));
 
         // Simulate no lock file so flake returns a command
-        let command = get_nix_env_command(&config, &root, |p| {
-            match p {
-                VirtualPath::Real(path) => {
-                    let s = path.to_string_lossy();
-                    s.ends_with("flake.nix") || s.ends_with(".flox")
-                },
-                _ => false,
+        let command = get_nix_env_command(&config, &root, |p| match p {
+            VirtualPath::Real(path) => {
+                let s = path.to_string_lossy();
+                s.ends_with("flake.nix") || s.ends_with(".flox")
             }
+            _ => false,
         });
 
         assert!(command.is_some());
