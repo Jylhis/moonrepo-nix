@@ -49,11 +49,8 @@ pub fn register_toolchain(
     }))
 }
 
-#[plugin_fn]
-pub fn initialize_toolchain(
-    Json(_): Json<InitializeToolchainInput>,
-) -> FnResult<Json<InitializeToolchainOutput>> {
-    Ok(Json(InitializeToolchainOutput {
+fn initialize_toolchain_internal() -> InitializeToolchainOutput {
+    InitializeToolchainOutput {
         prompts: vec![
             SettingPrompt::new(
                 "useFlake",
@@ -77,8 +74,16 @@ pub fn initialize_toolchain(
             ),
         ],
         ..Default::default()
-    }))
+    }
 }
+
+#[plugin_fn]
+pub fn initialize_toolchain(
+    Json(_): Json<InitializeToolchainInput>,
+) -> FnResult<Json<InitializeToolchainOutput>> {
+    Ok(Json(initialize_toolchain_internal()))
+}
+
 
 #[plugin_fn]
 pub fn define_toolchain_config() -> FnResult<Json<DefineToolchainConfigOutput>> {
@@ -253,4 +258,53 @@ pub fn extend_task_command(
     }
 
     Ok(Json(output))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use moon_pdk_api::PromptType;
+
+    #[test]
+    fn test_initialize_toolchain() {
+        let output = initialize_toolchain_internal();
+
+        assert_eq!(output.prompts.len(), 4);
+
+        let p1 = &output.prompts[0];
+        assert_eq!(p1.setting, "useFlake");
+        assert_eq!(p1.question, "Enable automatic detection and usage of <file>flake.nix</file>?");
+        if let PromptType::Confirm { default } = p1.ty {
+            assert!(default);
+        } else {
+            panic!("Expected Confirm prompt");
+        }
+
+        let p2 = &output.prompts[1];
+        assert_eq!(p2.setting, "useShellNix");
+        assert_eq!(p2.question, "Enable automatic detection and usage of <file>shell.nix</file>?");
+        if let PromptType::Confirm { default } = p2.ty {
+            assert!(!default);
+        } else {
+            panic!("Expected Confirm prompt");
+        }
+
+        let p3 = &output.prompts[2];
+        assert_eq!(p3.setting, "useFlox");
+        assert_eq!(p3.question, "Enable automatic detection and usage of Flox environments?");
+        if let PromptType::Confirm { default } = p3.ty {
+            assert!(!default);
+        } else {
+            panic!("Expected Confirm prompt");
+        }
+
+        let p4 = &output.prompts[3];
+        assert_eq!(p4.setting, "useDevenv");
+        assert_eq!(p4.question, "Enable automatic detection and usage of devenv?");
+        if let PromptType::Confirm { default } = p4.ty {
+            assert!(!default);
+        } else {
+            panic!("Expected Confirm prompt");
+        }
+    }
 }
