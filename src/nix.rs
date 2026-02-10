@@ -226,6 +226,7 @@ pub fn extend_task_command(
         NixEnv::Devenv => {
             output.command = Some("devenv".into());
 
+            // Optimization: Move input.command to avoid cloning
             let mut args = vec!["shell".into(), "--".into(), input.command];
             args.extend(input.args);
 
