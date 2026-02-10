@@ -125,7 +125,6 @@ pub fn locate_dependencies_root(
     }
 }
 
-
 #[plugin_fn]
 pub fn setup_environment(
     Json(input): Json<SetupEnvironmentInput>,
