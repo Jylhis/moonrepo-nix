@@ -202,12 +202,7 @@ pub fn extend_task_command(
     let config = get_toolchain_config::<NixToolchainConfig>()?;
 
     // Check for various Nix environment setups
-    let workspace_root = &input.context.workspace_root;
-
-    // Get the project directory from the task target
-    let target_str = input.task.target.to_string();
-    let project_id = target_str.split(':').next().unwrap_or("");
-    let project_root = workspace_root.join(project_id);
+    let project_root = &input.context.working_dir;
 
     let nix_env = match () {
         _ if config.use_flake && project_root.join("flake.nix").exists() => NixEnv::NixFlake,
