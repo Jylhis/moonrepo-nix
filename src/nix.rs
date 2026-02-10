@@ -316,6 +316,9 @@ mod tests {
             ]
         );
 
-        assert_eq!(output.vendor_dir_name, Some(".devenv/profile/bin".to_string()));
+        assert_eq!(
+            output.vendor_dir_name,
+            Some(".devenv/profile/bin".to_string())
+        );
     }
 }
