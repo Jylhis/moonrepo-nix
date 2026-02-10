@@ -881,7 +881,6 @@ dependencies = [
  "moon_config",
  "moon_pdk",
  "moon_pdk_api",
- "rustc-hash",
  "schematic",
  "serde",
  "starbase_utils",
