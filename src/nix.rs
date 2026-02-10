@@ -84,7 +84,6 @@ pub fn initialize_toolchain(
     Ok(Json(initialize_toolchain_internal()))
 }
 
-
 #[plugin_fn]
 pub fn define_toolchain_config() -> FnResult<Json<DefineToolchainConfigOutput>> {
     Ok(Json(DefineToolchainConfigOutput {
@@ -273,7 +272,10 @@ mod tests {
 
         let p1 = &output.prompts[0];
         assert_eq!(p1.setting, "useFlake");
-        assert_eq!(p1.question, "Enable automatic detection and usage of <file>flake.nix</file>?");
+        assert_eq!(
+            p1.question,
+            "Enable automatic detection and usage of <file>flake.nix</file>?"
+        );
         if let PromptType::Confirm { default } = p1.ty {
             assert!(default);
         } else {
@@ -282,7 +284,10 @@ mod tests {
 
         let p2 = &output.prompts[1];
         assert_eq!(p2.setting, "useShellNix");
-        assert_eq!(p2.question, "Enable automatic detection and usage of <file>shell.nix</file>?");
+        assert_eq!(
+            p2.question,
+            "Enable automatic detection and usage of <file>shell.nix</file>?"
+        );
         if let PromptType::Confirm { default } = p2.ty {
             assert!(!default);
         } else {
@@ -291,7 +296,10 @@ mod tests {
 
         let p3 = &output.prompts[2];
         assert_eq!(p3.setting, "useFlox");
-        assert_eq!(p3.question, "Enable automatic detection and usage of Flox environments?");
+        assert_eq!(
+            p3.question,
+            "Enable automatic detection and usage of Flox environments?"
+        );
         if let PromptType::Confirm { default } = p3.ty {
             assert!(!default);
         } else {
@@ -300,7 +308,10 @@ mod tests {
 
         let p4 = &output.prompts[3];
         assert_eq!(p4.setting, "useDevenv");
-        assert_eq!(p4.question, "Enable automatic detection and usage of devenv?");
+        assert_eq!(
+            p4.question,
+            "Enable automatic detection and usage of devenv?"
+        );
         if let PromptType::Confirm { default } = p4.ty {
             assert!(!default);
         } else {
