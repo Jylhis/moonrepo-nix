@@ -11,9 +11,14 @@ enum NixEnv {
     NixShell,
     None,
 }
-
 #[plugin_fn]
 pub fn register_toolchain(
+    input: Json<RegisterToolchainInput>,
+) -> FnResult<Json<RegisterToolchainOutput>> {
+    register_toolchain_internal(input)
+}
+
+pub fn register_toolchain_internal(
     Json(_): Json<RegisterToolchainInput>,
 ) -> FnResult<Json<RegisterToolchainOutput>> {
     Ok(Json(RegisterToolchainOutput {
@@ -253,4 +258,67 @@ pub fn extend_task_command(
     }
 
     Ok(Json(output))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_register_toolchain() {
+        let input = RegisterToolchainInput::default();
+        let result = register_toolchain_internal(Json(input));
+
+        assert!(result.is_ok());
+
+        let output = result.unwrap().0;
+        assert_eq!(output.name, "Nix");
+        assert_eq!(output.plugin_version, env!("CARGO_PKG_VERSION"));
+
+        assert_eq!(
+            output.config_file_globs,
+            vec![
+                "flake.nix".to_string(),
+                "flake.lock".to_string(),
+                "shell.nix".to_string(),
+                "default.nix".to_string(),
+                ".envrc".to_string(),
+                "devenv.nix".to_string(),
+                "devenv.lock".to_string(),
+                "devenv.yaml".to_string(),
+                ".flox/env.json".to_string(),
+                ".flox/env.toml".to_string(),
+            ]
+        );
+
+        assert_eq!(
+            output.exe_names,
+            vec![
+                "nix".to_string(),
+                "nix-shell".to_string(),
+                "devenv".to_string(),
+                "flox".to_string(),
+            ]
+        );
+
+        assert_eq!(
+            output.lock_file_names,
+            vec!["flake.lock".to_string(), "devenv.lock".to_string()]
+        );
+
+        assert_eq!(
+            output.manifest_file_names,
+            vec![
+                "flake.nix".to_string(),
+                "shell.nix".to_string(),
+                "devenv.nix".to_string(),
+                "devenv.yaml".to_string(),
+            ]
+        );
+
+        assert_eq!(
+            output.vendor_dir_name,
+            Some(".devenv/profile/bin".to_string())
+        );
+    }
 }
