@@ -225,22 +225,16 @@ pub fn extend_task_command(
 
 fn detect_nix_env(config: &NixToolchainConfig, start_dir: &VirtualPath) -> NixEnv {
     if config.use_devenv
-        && (start_dir.join("devenv.nix").exists() || start_dir.join("devenv.yaml").exists())
+        && (start_dir.join("devenv.nix").exists()
+            || start_dir.join("devenv.yaml").exists())
     {
-        return NixEnv::Devenv;
+        NixEnv::Devenv
+    } else if config.use_flake && start_dir.join("flake.nix").exists() {
+        NixEnv::NixFlake
+    } else if config.use_flox && start_dir.join(".flox").exists() {
+        NixEnv::Flox
+    } else if config.use_shell_nix && start_dir.join("shell.nix").exists() {
+        NixEnv::NixShell
+    } else {
+        NixEnv::None
     }
-
-    if config.use_flake && start_dir.join("flake.nix").exists() {
-        return NixEnv::NixFlake;
-    }
-
-    if config.use_flox && start_dir.join(".flox").exists() {
-        return NixEnv::Flox;
-    }
-
-    if config.use_shell_nix && start_dir.join("shell.nix").exists() {
-        return NixEnv::NixShell;
-    }
-
-    NixEnv::None
-}
