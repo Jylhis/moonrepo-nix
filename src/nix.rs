@@ -12,6 +12,20 @@ enum NixEnv {
     None,
 }
 
+fn detect_nix_env(dir: &VirtualPath, config: &NixToolchainConfig) -> NixEnv {
+    match () {
+        _ if config.use_devenv
+            && (dir.join("devenv.nix").exists() || dir.join("devenv.yaml").exists()) =>
+        {
+            NixEnv::Devenv
+        }
+        _ if config.use_flake && dir.join("flake.nix").exists() => NixEnv::NixFlake,
+        _ if config.use_flox && dir.join(".flox").exists() => NixEnv::Flox,
+        _ if config.use_shell_nix && dir.join("shell.nix").exists() => NixEnv::NixShell,
+        _ => NixEnv::None,
+    }
+}
+
 #[plugin_fn]
 pub fn register_toolchain(
     Json(_): Json<RegisterToolchainInput>,
@@ -103,18 +117,7 @@ pub fn locate_dependencies_root(
     let starting_dir = &input.starting_dir;
 
     // Check for Nix environment files in the starting directory
-    let nix_env = match () {
-        _ if config.use_devenv
-            && (starting_dir.join("devenv.nix").exists()
-                || starting_dir.join("devenv.yaml").exists()) =>
-        {
-            NixEnv::Devenv
-        }
-        _ if config.use_flake && starting_dir.join("flake.nix").exists() => NixEnv::NixFlake,
-        _ if config.use_flox && starting_dir.join(".flox").exists() => NixEnv::Flox,
-        _ if config.use_shell_nix && starting_dir.join("shell.nix").exists() => NixEnv::NixShell,
-        _ => NixEnv::None,
-    };
+    let nix_env = detect_nix_env(starting_dir, &config);
 
     match nix_env {
         NixEnv::None => Ok(Json(LocateDependenciesRootOutput::default())),
@@ -140,18 +143,7 @@ pub fn setup_environment(
         None => workspace_root.clone(),
     };
 
-    let nix_env = match () {
-        _ if config.use_devenv
-            && (project_root.join("devenv.nix").exists()
-                || project_root.join("devenv.yaml").exists()) =>
-        {
-            NixEnv::Devenv
-        }
-        _ if config.use_flake && project_root.join("flake.nix").exists() => NixEnv::NixFlake,
-        _ if config.use_flox && project_root.join(".flox").exists() => NixEnv::Flox,
-        _ if config.use_shell_nix && project_root.join("shell.nix").exists() => NixEnv::NixShell,
-        _ => NixEnv::None,
-    };
+    let nix_env = detect_nix_env(&project_root, &config);
 
     match nix_env {
         NixEnv::NixFlake => {
@@ -209,18 +201,7 @@ pub fn extend_task_command(
     let project_id = target_str.split(':').next().unwrap_or("");
     let project_root = workspace_root.join(project_id);
 
-    let nix_env = match () {
-        _ if config.use_flake && project_root.join("flake.nix").exists() => NixEnv::NixFlake,
-        _ if config.use_devenv
-            && (project_root.join("devenv.nix").exists()
-                || project_root.join("devenv.yaml").exists()) =>
-        {
-            NixEnv::Devenv
-        }
-        _ if config.use_flox && project_root.join(".flox").exists() => NixEnv::Flox,
-        _ if config.use_shell_nix && project_root.join("shell.nix").exists() => NixEnv::NixShell,
-        _ => NixEnv::None,
-    };
+    let nix_env = detect_nix_env(&project_root, &config);
 
     match nix_env {
         NixEnv::Devenv => {
