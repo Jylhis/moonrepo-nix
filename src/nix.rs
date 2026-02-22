@@ -3,13 +3,52 @@ use extism_pdk::*;
 use moon_pdk::get_toolchain_config;
 use moon_pdk_api::*;
 use schematic::SchemaBuilder;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
+static ENV_CACHE: Mutex<Option<HashMap<PathBuf, NixEnv>>> = Mutex::new(None);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum NixEnv {
     Devenv,
     Flox,
     NixFlake,
     NixShell,
     None,
+}
+
+fn detect_nix_env<P: AsRef<Path>>(project_root: P, config: &NixToolchainConfig) -> NixEnv {
+    let project_root = project_root.as_ref();
+
+    if let Ok(mut guard) = ENV_CACHE.lock() {
+        let cache = guard.get_or_insert_with(HashMap::new);
+        if let Some(env) = cache.get(project_root) {
+            return *env;
+        }
+    }
+
+    let env = if config.use_devenv
+        && (project_root.join("devenv.nix").exists() || project_root.join("devenv.yaml").exists())
+    {
+        NixEnv::Devenv
+    } else if config.use_flake && project_root.join("flake.nix").exists() {
+        NixEnv::NixFlake
+    } else if config.use_flox && project_root.join(".flox").exists() {
+        NixEnv::Flox
+    } else if config.use_shell_nix && project_root.join("shell.nix").exists() {
+        NixEnv::NixShell
+    } else {
+        NixEnv::None
+    };
+
+    if let Ok(mut guard) = ENV_CACHE.lock() {
+        if let Some(cache) = guard.as_mut() {
+            cache.insert(project_root.to_path_buf(), env);
+        }
+    }
+
+    env
 }
 
 #[plugin_fn]
@@ -102,19 +141,7 @@ pub fn locate_dependencies_root(
     let config = get_toolchain_config::<NixToolchainConfig>()?;
     let starting_dir = &input.starting_dir;
 
-    // Check for Nix environment files in the starting directory
-    let nix_env = match () {
-        _ if config.use_devenv
-            && (starting_dir.join("devenv.nix").exists()
-                || starting_dir.join("devenv.yaml").exists()) =>
-        {
-            NixEnv::Devenv
-        }
-        _ if config.use_flake && starting_dir.join("flake.nix").exists() => NixEnv::NixFlake,
-        _ if config.use_flox && starting_dir.join(".flox").exists() => NixEnv::Flox,
-        _ if config.use_shell_nix && starting_dir.join("shell.nix").exists() => NixEnv::NixShell,
-        _ => NixEnv::None,
-    };
+    let nix_env = detect_nix_env(starting_dir, &config);
 
     match nix_env {
         NixEnv::None => Ok(Json(LocateDependenciesRootOutput::default())),
@@ -140,18 +167,7 @@ pub fn setup_environment(
         None => workspace_root.clone(),
     };
 
-    let nix_env = match () {
-        _ if config.use_devenv
-            && (project_root.join("devenv.nix").exists()
-                || project_root.join("devenv.yaml").exists()) =>
-        {
-            NixEnv::Devenv
-        }
-        _ if config.use_flake && project_root.join("flake.nix").exists() => NixEnv::NixFlake,
-        _ if config.use_flox && project_root.join(".flox").exists() => NixEnv::Flox,
-        _ if config.use_shell_nix && project_root.join("shell.nix").exists() => NixEnv::NixShell,
-        _ => NixEnv::None,
-    };
+    let nix_env = detect_nix_env(&project_root, &config);
 
     match nix_env {
         NixEnv::NixFlake => {
@@ -209,18 +225,7 @@ pub fn extend_task_command(
     let project_id = target_str.split(':').next().unwrap_or("");
     let project_root = workspace_root.join(project_id);
 
-    let nix_env = match () {
-        _ if config.use_flake && project_root.join("flake.nix").exists() => NixEnv::NixFlake,
-        _ if config.use_devenv
-            && (project_root.join("devenv.nix").exists()
-                || project_root.join("devenv.yaml").exists()) =>
-        {
-            NixEnv::Devenv
-        }
-        _ if config.use_flox && project_root.join(".flox").exists() => NixEnv::Flox,
-        _ if config.use_shell_nix && project_root.join("shell.nix").exists() => NixEnv::NixShell,
-        _ => NixEnv::None,
-    };
+    let nix_env = detect_nix_env(&project_root, &config);
 
     match nix_env {
         NixEnv::Devenv => {
@@ -253,4 +258,45 @@ pub fn extend_task_command(
     }
 
     Ok(Json(output))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn test_detect_nix_env_caching() {
+        let temp_dir = std::env::temp_dir().join("moon_nix_test_caching");
+        if temp_dir.exists() {
+            fs::remove_dir_all(&temp_dir).unwrap();
+        }
+        fs::create_dir(&temp_dir).unwrap();
+
+        let flake_path = temp_dir.join("flake.nix");
+        fs::write(&flake_path, "{ }").unwrap();
+
+        let config = NixToolchainConfig {
+            use_flake: true,
+            use_shell_nix: true,
+            use_flox: true,
+            use_devenv: true,
+            flox_environment: None,
+            version: None,
+        };
+
+        // First call (uncached) - should detect flake
+        let env = detect_nix_env(&temp_dir, &config);
+        assert_eq!(env, NixEnv::NixFlake);
+
+        // Delete the file
+        fs::remove_file(&flake_path).unwrap();
+
+        // Second call (cached) - should still return NixFlake because it's cached
+        let env = detect_nix_env(&temp_dir, &config);
+        assert_eq!(env, NixEnv::NixFlake);
+
+        // Cleanup
+        fs::remove_dir_all(&temp_dir).unwrap();
+    }
 }
