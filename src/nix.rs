@@ -12,11 +12,8 @@ enum NixEnv {
     None,
 }
 
-#[plugin_fn]
-pub fn register_toolchain(
-    Json(_): Json<RegisterToolchainInput>,
-) -> FnResult<Json<RegisterToolchainOutput>> {
-    Ok(Json(RegisterToolchainOutput {
+pub(crate) fn register_toolchain_internal() -> RegisterToolchainOutput {
+    RegisterToolchainOutput {
         name: "Nix".into(),
         plugin_version: env!("CARGO_PKG_VERSION").into(),
         config_file_globs: vec![
@@ -46,7 +43,14 @@ pub fn register_toolchain(
         ],
         vendor_dir_name: Some(".devenv/profile/bin".into()),
         ..Default::default()
-    }))
+    }
+}
+
+#[plugin_fn]
+pub fn register_toolchain(
+    Json(_): Json<RegisterToolchainInput>,
+) -> FnResult<Json<RegisterToolchainOutput>> {
+    Ok(Json(register_toolchain_internal()))
 }
 
 #[plugin_fn]
@@ -253,4 +257,42 @@ pub fn extend_task_command(
     }
 
     Ok(Json(output))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_register_toolchain_internal() {
+        let output = register_toolchain_internal();
+
+        assert_eq!(output.name, "Nix");
+        assert_eq!(output.plugin_version, env!("CARGO_PKG_VERSION"));
+
+        let expected_config_globs = vec![
+            "flake.nix",
+            "flake.lock",
+            "shell.nix",
+            "default.nix",
+            ".envrc",
+            "devenv.nix",
+            "devenv.lock",
+            "devenv.yaml",
+            ".flox/env.json",
+            ".flox/env.toml",
+        ];
+        assert_eq!(output.config_file_globs, expected_config_globs);
+
+        let expected_exe_names = vec!["nix", "nix-shell", "devenv", "flox"];
+        assert_eq!(output.exe_names, expected_exe_names);
+
+        let expected_lock_names = vec!["flake.lock", "devenv.lock"];
+        assert_eq!(output.lock_file_names, expected_lock_names);
+
+        let expected_manifest_names = vec!["flake.nix", "shell.nix", "devenv.nix", "devenv.yaml"];
+        assert_eq!(output.manifest_file_names, expected_manifest_names);
+
+        assert_eq!(output.vendor_dir_name, Some(".devenv/profile/bin".into()));
+    }
 }
