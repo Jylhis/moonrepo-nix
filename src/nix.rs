@@ -49,11 +49,8 @@ pub fn register_toolchain(
     }))
 }
 
-#[plugin_fn]
-pub fn initialize_toolchain(
-    Json(_): Json<InitializeToolchainInput>,
-) -> FnResult<Json<InitializeToolchainOutput>> {
-    Ok(Json(InitializeToolchainOutput {
+pub fn initialize_toolchain_internal() -> InitializeToolchainOutput {
+    InitializeToolchainOutput {
         prompts: vec![
             SettingPrompt::new(
                 "useFlake",
@@ -77,7 +74,14 @@ pub fn initialize_toolchain(
             ),
         ],
         ..Default::default()
-    }))
+    }
+}
+
+#[plugin_fn]
+pub fn initialize_toolchain(
+    Json(_): Json<InitializeToolchainInput>,
+) -> FnResult<Json<InitializeToolchainOutput>> {
+    Ok(Json(initialize_toolchain_internal()))
 }
 
 #[plugin_fn]
@@ -253,4 +257,43 @@ pub fn extend_task_command(
     }
 
     Ok(Json(output))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_initialize_toolchain_internal() {
+        let output = initialize_toolchain_internal();
+        assert_eq!(output.prompts.len(), 4);
+
+        assert_eq!(output.prompts[0].setting, "useFlake");
+        assert_eq!(
+            output.prompts[0].question,
+            "Enable automatic detection and usage of <file>flake.nix</file>?"
+        );
+        assert_eq!(output.prompts[0].ty, PromptType::Confirm { default: true });
+
+        assert_eq!(output.prompts[1].setting, "useShellNix");
+        assert_eq!(
+            output.prompts[1].question,
+            "Enable automatic detection and usage of <file>shell.nix</file>?"
+        );
+        assert_eq!(output.prompts[1].ty, PromptType::Confirm { default: false });
+
+        assert_eq!(output.prompts[2].setting, "useFlox");
+        assert_eq!(
+            output.prompts[2].question,
+            "Enable automatic detection and usage of Flox environments?"
+        );
+        assert_eq!(output.prompts[2].ty, PromptType::Confirm { default: false });
+
+        assert_eq!(output.prompts[3].setting, "useDevenv");
+        assert_eq!(
+            output.prompts[3].question,
+            "Enable automatic detection and usage of devenv?"
+        );
+        assert_eq!(output.prompts[3].ty, PromptType::Confirm { default: false });
+    }
 }
