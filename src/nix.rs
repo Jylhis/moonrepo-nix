@@ -13,16 +13,16 @@ enum NixEnv {
 }
 
 fn detect_nix_env(dir: &VirtualPath, config: &NixToolchainConfig) -> NixEnv {
-    match () {
-        _ if config.use_devenv
-            && (dir.join("devenv.nix").exists() || dir.join("devenv.yaml").exists()) =>
-        {
-            NixEnv::Devenv
-        }
-        _ if config.use_flake && dir.join("flake.nix").exists() => NixEnv::NixFlake,
-        _ if config.use_flox && dir.join(".flox").exists() => NixEnv::Flox,
-        _ if config.use_shell_nix && dir.join("shell.nix").exists() => NixEnv::NixShell,
-        _ => NixEnv::None,
+    if config.use_devenv && (dir.join("devenv.nix").exists() || dir.join("devenv.yaml").exists()) {
+        NixEnv::Devenv
+    } else if config.use_flake && dir.join("flake.nix").exists() {
+        NixEnv::NixFlake
+    } else if config.use_flox && dir.join(".flox").exists() {
+        NixEnv::Flox
+    } else if config.use_shell_nix && dir.join("shell.nix").exists() {
+        NixEnv::NixShell
+    } else {
+        NixEnv::None
     }
 }
 
