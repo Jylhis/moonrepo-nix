@@ -13,6 +13,48 @@ enum NixEnv {
     None,
 }
 
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Mutex;
+
+static CACHE: Mutex<Option<HashMap<PathBuf, NixEnv>>> = Mutex::new(None);
+
+fn detect_nix_env(config: &NixToolchainConfig, dir: &VirtualPath) -> NixEnv {
+    let path = dir.to_path_buf();
+
+    if let Ok(mut cache) = CACHE.lock() {
+        if let Some(map) = cache.as_mut() {
+            if let Some(env) = map.get(&path) {
+                return *env;
+            }
+        } else {
+            *cache = Some(HashMap::new());
+        }
+    }
+
+    let env = if config.use_devenv
+        && (dir.join("devenv.nix").exists() || dir.join("devenv.yaml").exists())
+    {
+        NixEnv::Devenv
+    } else if config.use_flake && dir.join("flake.nix").exists() {
+        NixEnv::NixFlake
+    } else if config.use_flox && dir.join(".flox").exists() {
+        NixEnv::Flox
+    } else if config.use_shell_nix && dir.join("shell.nix").exists() {
+        NixEnv::NixShell
+    } else {
+        NixEnv::None
+    };
+
+    if let Ok(mut cache) = CACHE.lock() {
+        if let Some(map) = cache.as_mut() {
+            map.insert(path, env);
+        }
+    }
+
+    env
+}
+
 #[plugin_fn]
 pub fn register_toolchain(
     Json(_): Json<RegisterToolchainInput>,
